@@ -18,7 +18,7 @@ mod server;
 mod service;
 mod session;
 pub mod types;
-mod version;
+pub mod version;
 
 pub use self::error::MqttError;
 pub use self::server::MqttServer;
