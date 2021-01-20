@@ -11,6 +11,9 @@ license = "MIT"
 exclude = [".gitignore", ".travis.yml", ".cargo/config"]
 edition = "2018"
 
+[features]
+pass-control = []
+
 [dependencies]
 ntex = "0.1.27"
 ntex-codec = "0.2.1"
@@ -32,3 +35,4 @@ env_logger = "0.8"
 
 rustls = "0.19"
 ntex = { version = "0.1.27", features = ["rustls"] }
+

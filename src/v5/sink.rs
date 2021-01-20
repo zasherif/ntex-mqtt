@@ -7,9 +7,7 @@ use futures::future::{ready, Either, Future, FutureExt};
 use ntex::channel::pool;
 
 use crate::v5::error::{ProtocolError, PublishQos1Error, SendPacketError};
-use crate::{
-    io::IoState, io::IoStateInner, types::packet_type, types::QoS, v5::codec, AHashMap,
-};
+use crate::{io::IoState, io::IoStateInner, types::packet_type, types::QoS, v5::codec, AHashMap};
 
 pub struct MqttSink(Rc<RefCell<MqttSinkInner>>, IoState<codec::Codec>);
 
@@ -33,7 +31,10 @@ pub(crate) struct MqttSinkPool {
 
 impl Default for MqttSinkPool {
     fn default() -> Self {
-        Self { queue: pool::new(), waiters: pool::new() }
+        Self {
+            queue: pool::new(),
+            waiters: pool::new(),
+        }
     }
 }
 
@@ -132,7 +133,11 @@ impl MqttSink {
 
     /// Send ping
     pub(super) fn ping(&self) -> bool {
-        self.1.inner.borrow_mut().send(codec::Packet::PingRequest).is_ok()
+        self.1
+            .inner
+            .borrow_mut()
+            .send(codec::Packet::PingRequest)
+            .is_ok()
     }
 
     /// Close mqtt connection, dont send disconnect message
@@ -168,10 +173,7 @@ impl MqttSink {
                         // cleanup ack queue
                         if !pkt.is_match(tp) {
                             log::trace!("MQTT protocol error, unexpeted packet");
-                            return Err(ProtocolError::Unexpected(
-                                pkt.packet_type(),
-                                tp.name(),
-                            ));
+                            return Err(ProtocolError::Unexpected(pkt.packet_type(), tp.name()));
                         }
                         let _ = tx.send(pkt);
 
@@ -328,7 +330,7 @@ impl AckType {
 pub struct PublishBuilder {
     sink: Rc<RefCell<MqttSinkInner>>,
     state: Rc<RefCell<IoStateInner<codec::Codec>>>,
-    packet: codec::Publish,
+    pub packet: codec::Publish,
 }
 
 impl PublishBuilder {
@@ -381,7 +383,9 @@ impl PublishBuilder {
 
         if state.is_opened() {
             log::trace!("Publish (QoS-0) to {:?}", packet.topic);
-            state.send(codec::Packet::Publish(packet)).map_err(SendPacketError::Encode)
+            state
+                .send(codec::Packet::Publish(packet))
+                .map_err(SendPacketError::Encode)
         } else {
             log::error!("Mqtt sink is disconnected");
             Err(SendPacketError::Disconnected)
@@ -441,13 +445,15 @@ impl PublishBuilder {
                     drop(state);
 
                     // wait ack from peer
-                    rx.await.map_err(|_| PublishQos1Error::Disconnected).and_then(|pkt| {
-                        let pkt = pkt.publish();
-                        match pkt.reason_code {
-                            codec::PublishAckReason::Success => Ok(pkt),
-                            _ => Err(PublishQos1Error::Fail(pkt)),
-                        }
-                    })
+                    rx.await
+                        .map_err(|_| PublishQos1Error::Disconnected)
+                        .and_then(|pkt| {
+                            let pkt = pkt.publish();
+                            match pkt.reason_code {
+                                codec::PublishAckReason::Success => Ok(pkt),
+                                _ => Err(PublishQos1Error::Fail(pkt)),
+                            }
+                        })
                 }
                 Err(err) => Err(PublishQos1Error::Encode(err)),
             }
@@ -478,11 +484,7 @@ impl SubscribeBuilder {
     }
 
     /// Add topic filter
-    pub fn topic_filter(
-        mut self,
-        filter: ByteString,
-        opts: codec::SubscriptionOptions,
-    ) -> Self {
+    pub fn topic_filter(mut self, filter: ByteString, opts: codec::SubscriptionOptions) -> Self {
         self.packet.topic_filters.push((filter, opts));
         self
     }
@@ -524,7 +526,11 @@ impl SubscribeBuilder {
             let (tx, rx) = inner.pool.queue.channel();
 
             // allocate packet id
-            let idx = if self.id == 0 { inner.next_id() } else { self.id };
+            let idx = if self.id == 0 {
+                inner.next_id()
+            } else {
+                self.id
+            };
             if inner.inflight.contains_key(&idx) {
                 return Err(SendPacketError::PacketIdInUse(idx));
             }
@@ -617,7 +623,11 @@ impl UnsubscribeBuilder {
             let (tx, rx) = inner.pool.queue.channel();
 
             // allocate packet id
-            let idx = if self.id == 0 { inner.next_id() } else { self.id };
+            let idx = if self.id == 0 {
+                inner.next_id()
+            } else {
+                self.id
+            };
             if inner.inflight.contains_key(&idx) {
                 return Err(SendPacketError::PacketIdInUse(idx));
             }

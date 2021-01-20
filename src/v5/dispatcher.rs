@@ -46,7 +46,10 @@ where
 {
     fn_factory_with_config(move |cfg: Session<St>| {
         // create services
-        let fut = join(publish.new_service(cfg.clone()), control.new_service(cfg.clone()));
+        let fut = join(
+            publish.new_service(cfg.clone()),
+            control.new_service(cfg.clone()),
+        );
 
         let (max_receive, max_topic_alias) = cfg.params();
 
@@ -135,8 +138,15 @@ where
     >;
 
     fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let res1 = self.publish.poll_ready(cx).map_err(|e| MqttError::Service(e.into()))?;
-        let res2 = self.inner.control.poll_ready(cx).map_err(MqttError::Service)?;
+        let res1 = self
+            .publish
+            .poll_ready(cx)
+            .map_err(|e| MqttError::Service(e.into()))?;
+        let res2 = self
+            .inner
+            .control
+            .poll_ready(cx)
+            .map_err(MqttError::Service)?;
 
         if res1.is_pending() || res2.is_pending() {
             Poll::Pending
@@ -150,7 +160,10 @@ where
             self.inner.sink.drop_sink();
             self.shutdown.set(true);
             ntex::rt::spawn(
-                self.inner.control.call(ControlMessage::closed(is_error)).map(|_| ()),
+                self.inner
+                    .control
+                    .call(ControlMessage::closed(is_error))
+                    .map(|_| ()),
             );
         }
         Poll::Ready(())
@@ -176,9 +189,7 @@ where
                                 inner.inflight.len()
                             );
                             return Either::Right(Either::Right(ControlResponse::new(
-                                ControlMessage::proto_error(
-                                    ProtocolError::ReceiveMaximumExceeded,
-                                ),
+                                ControlMessage::proto_error(ProtocolError::ReceiveMaximumExceeded),
                                 &self.inner,
                             )));
                         }
@@ -200,9 +211,7 @@ where
                         if publish.topic.is_empty() {
                             if !inner.aliases.contains(&alias) {
                                 return Either::Right(Either::Right(ControlResponse::new(
-                                    ControlMessage::proto_error(
-                                        ProtocolError::UnknownTopicAlias,
-                                    ),
+                                    ControlMessage::proto_error(ProtocolError::UnknownTopicAlias),
                                     &self.inner,
                                 )));
                             }
@@ -230,6 +239,15 @@ where
                 })
             }
             DispatcherItem::Item(codec::Packet::PublishAck(packet)) => {
+                log::trace!("pub ack {:?}", packet);
+
+                #[cfg(feature = "pass-control")]
+                return Either::Right(Either::Right(ControlResponse::new(
+                    ControlMessage::pub_ack(packet),
+                    &self.inner,
+                )));
+
+                #[cfg(not(feature = "pass-control"))]
                 if let Err(err) = self.sink.pkt_ack(Ack::Publish(packet)) {
                     Either::Right(Either::Right(ControlResponse::new(
                         ControlMessage::proto_error(err),
@@ -245,23 +263,24 @@ where
             DispatcherItem::Item(codec::Packet::PingRequest) => Either::Right(Either::Right(
                 ControlResponse::new(ControlMessage::ping(), &self.inner),
             )),
-            DispatcherItem::Item(codec::Packet::Disconnect(pkt)) => Either::Right(
-                Either::Right(ControlResponse::new(ControlMessage::dis(pkt), &self.inner)),
-            ),
+            DispatcherItem::Item(codec::Packet::Disconnect(pkt)) => Either::Right(Either::Right(
+                ControlResponse::new(ControlMessage::dis(pkt), &self.inner),
+            )),
             DispatcherItem::Item(codec::Packet::Subscribe(pkt)) => {
                 // register inflight packet id
                 if !self.inner.info.borrow_mut().inflight.insert(pkt.packet_id) {
                     // duplicated packet id
-                    self.sink.send(codec::Packet::SubscribeAck(codec::SubscribeAck {
-                        packet_id: pkt.packet_id,
-                        status: pkt
-                            .topic_filters
-                            .iter()
-                            .map(|_| codec::SubscribeAckReason::PacketIdentifierInUse)
-                            .collect(),
-                        properties: codec::UserProperties::new(),
-                        reason_string: None,
-                    }));
+                    self.sink
+                        .send(codec::Packet::SubscribeAck(codec::SubscribeAck {
+                            packet_id: pkt.packet_id,
+                            status: pkt
+                                .topic_filters
+                                .iter()
+                                .map(|_| codec::SubscribeAckReason::PacketIdentifierInUse)
+                                .collect(),
+                            properties: codec::UserProperties::new(),
+                            reason_string: None,
+                        }));
                     return Either::Right(Either::Left(ok(None)));
                 }
                 let id = pkt.packet_id;
@@ -274,16 +293,17 @@ where
                 // register inflight packet id
                 if !self.inner.info.borrow_mut().inflight.insert(pkt.packet_id) {
                     // duplicated packet id
-                    self.sink.send(codec::Packet::UnsubscribeAck(codec::UnsubscribeAck {
-                        packet_id: pkt.packet_id,
-                        status: pkt
-                            .topic_filters
-                            .iter()
-                            .map(|_| codec::UnsubscribeAckReason::PacketIdentifierInUse)
-                            .collect(),
-                        properties: codec::UserProperties::new(),
-                        reason_string: None,
-                    }));
+                    self.sink
+                        .send(codec::Packet::UnsubscribeAck(codec::UnsubscribeAck {
+                            packet_id: pkt.packet_id,
+                            status: pkt
+                                .topic_filters
+                                .iter()
+                                .map(|_| codec::UnsubscribeAckReason::PacketIdentifierInUse)
+                                .collect(),
+                            properties: codec::UserProperties::new(),
+                            reason_string: None,
+                        }));
                     return Either::Right(Either::Left(ok(None)));
                 }
                 let id = pkt.packet_id;
@@ -299,22 +319,23 @@ where
                     &self.inner,
                 )))
             }
-            DispatcherItem::KeepAliveTimeout => {
-                Either::Right(Either::Right(ControlResponse::new(
-                    ControlMessage::proto_error(ProtocolError::KeepAliveTimeout),
-                    &self.inner,
-                )))
-            }
+            DispatcherItem::KeepAliveTimeout => Either::Right(Either::Right(ControlResponse::new(
+                ControlMessage::proto_error(ProtocolError::KeepAliveTimeout),
+                &self.inner,
+            ))),
             DispatcherItem::DecoderError(err) => {
                 Either::Right(Either::Right(ControlResponse::new(
                     ControlMessage::proto_error(ProtocolError::Decode(err)),
                     &self.inner,
                 )))
             }
-            DispatcherItem::IoError(err) => Either::Right(Either::Right(ControlResponse::new(
-                ControlMessage::proto_error(ProtocolError::Io(err)),
-                &self.inner,
-            ))),
+            DispatcherItem::IoError(err) => {
+                log::trace!("Error {:?}", err);
+                Either::Right(Either::Right(ControlResponse::new(
+                    ControlMessage::proto_error(ProtocolError::Io(err)),
+                    &self.inner,
+                )))
+            }
         }
     }
 }
