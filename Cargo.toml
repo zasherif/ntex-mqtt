@@ -15,7 +15,7 @@ edition = "2018"
 pass-control = []
 
 [dependencies]
-ntex = { version = "0.3.16", default-features = false }
+ntex = { version = "0.3.17", default-features = false }
 bitflags = "1.2.1"
 derive_more = "0.99"
 log = "0.4"
@@ -31,4 +31,4 @@ tokio-rustls = "0.22"
 openssl = "0.10"
 tokio-openssl = "0.6"
 
-ntex = { version = "0.3", features = ["rustls", "openssl"] }
+ntex = { version = "0.3.17", features = ["rustls", "openssl"] }
